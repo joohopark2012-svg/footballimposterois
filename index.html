@@ -220,29 +220,7 @@
 <body>
 <div class="pitch-bg"></div>
 <div id="app"></div>
-<script type="module">
-  // Import the functions you need from the SDKs you need
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-analytics.js";
-  // TODO: Add SDKs for Firebase products that you want to use
-  // https://firebase.google.com/docs/web/setup#available-libraries
 
-  // Your web app's Firebase configuration
-  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-  const firebaseConfig = {
-    apiKey: "AIzaSyCDj2fNq1_N_LWt21JMzeH0iI13peoS4S8",
-    authDomain: "football-imposter-14284.firebaseapp.com",
-    projectId: "football-imposter-14284",
-    storageBucket: "football-imposter-14284.firebasestorage.app",
-    messagingSenderId: "918233517480",
-    appId: "1:918233517480:web:7c23a34496ce4be473e19d",
-    measurementId: "G-9Y00DMVM0E"
-  };
-
-  // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
-</script>
 <script>
 (function(){
 
@@ -601,13 +579,14 @@ const FOOTBALLERS = [
   // PASTE YOUR FIREBASE CONFIG HERE (see setup comment near the top of
   // the <head>). Everything else in this file works as-is once this is set.
   // ---------------------------------------------------------------------
-  const FIREBASE_CONFIG = {
-    apiKey: "PASTE_YOUR_API_KEY_HERE",
-    authDomain: "YOUR-PROJECT.firebaseapp.com",
-    projectId: "YOUR-PROJECT",
-    storageBucket: "YOUR-PROJECT.appspot.com",
-    messagingSenderId: "000000000000",
-    appId: "1:000000000000:web:xxxxxxxxxxxxxxxx",
+    const firebaseConfig = {
+    apiKey: "AIzaSyCDj2fNq1_N_LWt21JMzeH0iI13peoS4S8",
+    authDomain: "football-imposter-14284.firebaseapp.com",
+    projectId: "football-imposter-14284",
+    storageBucket: "football-imposter-14284.firebasestorage.app",
+    messagingSenderId: "918233517480",
+    appId: "1:918233517480:web:7c23a34496ce4be473e19d",
+    measurementId: "G-9Y00DMVM0E"
   };
 
   let db = null;
