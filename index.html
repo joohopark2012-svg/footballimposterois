@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Football Imposter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!--
+  ============================================================================
+  SETUP (do this once before hosting on GitHub Pages / anywhere else):
+
+  1. Go to https://console.firebase.google.com -> Add project (free tier is
+     plenty). You don't need to enable Analytics.
+  2. In the project: Build -> Firestore Database -> Create database ->
+     start in TEST MODE (or set the rules below).
+  3. Project settings (gear icon) -> General -> "Your apps" -> Web app (</>)
+     -> register an app (no hosting needed) -> copy the firebaseConfig
+     object it gives you and paste it over FIREBASE_CONFIG below.
+  4. In Firestore -> Rules, use this (open, no login required — fine for a
+     casual party game with no sensitive data):
+
+       rules_version = '2';
+       service cloud.firestore {
+         match /databases/{database}/documents {
+           match /{document=**} {
+             allow read, write: if true;
+           }
+         }
+       }
+
+  5. Push this file to a GitHub repo, enable GitHub Pages on it, done —
+     anyone with the page URL can create/join rooms, no account needed.
+  ============================================================================
+-->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --bg: #0B2A20;
+    --bg-elev: #0F3B2B;
+    --bg-elev-2: #123F2E;
+    --line: #EDEAE0;
+    --line-soft: rgba(237,234,224,0.62);
+    --line-faint: rgba(237,234,224,0.16);
+    --gold: #D6A93B;
+    --gold-ink: #2A2007;
+    --red: #C23B3B;
+    --red-ink: #FBECEC;
+    --focus: #6FCF97;
+    --radius: 7px;
+  }
+  :root:not([data-theme="light"]){ color-scheme: dark; }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      /* keep pitch theme even in light mode — it's the subject, not a UI chrome choice */
+    }
+  }
+  *{ box-sizing: border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background: var(--bg);
+    color: var(--line);
+    font-family: "Work Sans", system-ui, sans-serif;
+    min-height:100vh;
+    position:relative;
+    overflow-x:hidden;
+  }
+  /* pitch markings, decorative */
+  .pitch-bg{
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(circle at 50% 50%, transparent 0 118px, var(--line-faint) 118px 120px, transparent 120px),
+      linear-gradient(var(--line-faint), var(--line-faint)) no-repeat 50% 50% / 100% 1px,
+      radial-gradient(ellipse at 50% -10%, var(--bg-elev) 0%, var(--bg) 55%);
+    background-position: 50% 42%, 50% 42%, 0 0;
+  }
+  .pitch-bg::before, .pitch-bg::after{
+    content:""; position:absolute; top:42%; width:220px; height:340px;
+    border: 1px solid var(--line-faint); transform: translateY(-50%);
+  }
+  .pitch-bg::before{ left:-110px; border-left:none; }
+  .pitch-bg::after{ right:-110px; border-right:none; }
+
+  #app{ position:relative; z-index:1; min-height:100vh; display:flex; flex-direction:column; align-items:center; padding: 32px 18px 60px; }
+
+  .wrap{ width:100%; max-width: 480px; margin-top: clamp(12px, 5vh, 56px); }
+
+  .brand{ display:flex; align-items:baseline; gap:10px; justify-content:center; margin-bottom: 28px; }
+  .brand .mark{ font-size: 28px; line-height:1; }
+  .brand h1{
+    font-family:"Oswald", sans-serif; font-weight:600; letter-spacing:0.01em;
+    font-size: clamp(26px, 6vw, 34px); margin:0; color:var(--line);
+  }
+  .brand .sub{ font-family:"Oswald", sans-serif; font-weight:400; font-size:15px; color:var(--gold); margin-left:2px;}
+
+  .panel{
+    background: var(--bg-elev);
+    border: 1px solid var(--line-faint);
+    border-top: 3px solid var(--gold);
+    border-radius: var(--radius);
+    padding: 26px 24px;
+    margin-bottom:16px;
+  }
+  .panel.danger{ border-top-color: var(--red); }
+
+  h2{ font-family:"Oswald", sans-serif; font-weight:500; font-size:20px; margin: 0 0 6px; color:var(--line); }
+  p.lead{ color:var(--line-soft); font-size:14.5px; line-height:1.5; margin: 0 0 20px; }
+
+  label{ display:block; font-size:13px; color:var(--line-soft); margin-bottom:6px; }
+  input[type=text]{
+    width:100%; background: var(--bg-elev-2); border:1px solid var(--line-faint);
+    color: var(--line); font-family:"Work Sans", sans-serif; font-size:16px;
+    padding: 11px 13px; border-radius: 5px; outline:none;
+  }
+  input[type=text]::placeholder{ color: rgba(237,234,224,0.35); }
+  input[type=text]:focus{ border-color: var(--focus); box-shadow: 0 0 0 3px rgba(111,207,151,0.18); }
+  input.code-input{ font-family:"Oswald", sans-serif; letter-spacing: 0.28em; text-transform:uppercase; font-size:22px; text-align:center; }
+
+  .field{ margin-bottom:16px; }
+  .row{ display:flex; gap:10px; }
+  .row > *{ flex:1; }
+
+  button{
+    font-family:"Work Sans", sans-serif; font-weight:600; font-size:15px;
+    border-radius: 5px; border: none; padding: 12px 18px; cursor:pointer;
+    transition: transform 0.06s ease, opacity 0.15s ease;
+  }
+  button:active{ transform: scale(0.98); }
+  button:disabled{ opacity:0.45; cursor:not-allowed; }
+  button.primary{ background: var(--gold); color: var(--gold-ink); width:100%; }
+  button.primary:hover:not(:disabled){ opacity:0.92; }
+  button.ghost{
+    background: transparent; color: var(--line); border:1px solid var(--line-faint); width:100%;
+  }
+  button.ghost:hover:not(:disabled){ border-color: var(--line-soft); }
+  button.danger{ background: var(--red); color: var(--red-ink); width:100%; }
+  button.small{ width:auto; padding:8px 14px; font-size:13.5px; }
+
+  .divider{ display:flex; align-items:center; gap:12px; margin: 22px 0; color:var(--line-soft); font-size:12.5px; }
+  .divider::before, .divider::after{ content:""; flex:1; height:1px; background:var(--line-faint); }
+
+  .code-display{
+    font-family:"Oswald", sans-serif; font-size: clamp(38px, 11vw, 52px); letter-spacing:0.16em;
+    text-align:center; color:var(--gold); margin: 4px 0 2px; font-weight:600;
+  }
+  .code-caption{ text-align:center; color:var(--line-soft); font-size:13px; margin-bottom:22px; }
+
+  .player-list{ list-style:none; margin:0 0 20px; padding:0; display:flex; flex-direction:column; gap:8px; }
+  .player-row{
+    display:flex; align-items:center; gap:10px; padding:9px 11px;
+    background: var(--bg-elev-2); border-radius:5px; border:1px solid var(--line-faint);
+  }
+  .avatar{
+    width:30px; height:30px; border-radius:50%; flex:none;
+    display:flex; align-items:center; justify-content:center;
+    font-family:"Oswald",sans-serif; font-size:13px; font-weight:600; color:#0B2A20;
+  }
+  .p-name{ flex:1; font-size:14.5px; }
+  .tag{ font-size:11px; padding:2px 7px; border-radius:20px; border:1px solid var(--line-faint); color:var(--line-soft); }
+  .tag.host{ color:var(--gold-ink); background:var(--gold); border-color:var(--gold); }
+  .tag.you{ color:var(--line); border-color:var(--line-soft); }
+
+  .empty-note{ color:var(--line-soft); font-size:13.5px; text-align:center; padding: 10px 0 18px; }
+
+  .role-card{
+    text-align:center; padding: 40px 22px;
+  }
+  .role-card .kicker{ font-size:13px; color:var(--line-soft); margin-bottom:10px; }
+  .role-card .big{ font-family:"Oswald", sans-serif; font-weight:600; font-size: clamp(28px, 8vw, 40px); line-height:1.15; }
+  .role-card.imposter .big{ color: var(--red); }
+  .role-card.crew .big{ color: var(--line); }
+  .role-card .hint{ margin-top:14px; color:var(--line-soft); font-size:14px; line-height:1.55; }
+
+  .clue-row{ display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--line-faint); font-size:14.5px; }
+  .clue-row:last-child{ border-bottom:none; }
+  .clue-row .who{ color:var(--line-soft); }
+  .clue-row .what{ font-weight:600; }
+
+  .vote-grid{ display:flex; flex-direction:column; gap:8px; margin-bottom:18px; }
+  .vote-btn{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background: var(--bg-elev-2); border:1px solid var(--line-faint); color:var(--line);
+    text-align:left; width:100%; padding:11px 13px;
+  }
+  .vote-btn .count{ color:var(--gold); font-family:"Oswald",sans-serif; font-size:15px; }
+  .vote-btn.selected{ border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+
+  .status-strip{
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    font-size:12.5px; color:var(--line-soft); margin-bottom:18px; text-align:center;
+  }
+  .dot{ width:6px; height:6px; border-radius:50%; background:var(--gold); flex:none; }
+
+  .result-banner{
+    text-align:center; padding: 22px; border-radius: var(--radius);
+    margin-bottom:18px; font-family:"Oswald",sans-serif; font-size:20px; font-weight:600;
+  }
+  .result-banner.crew-win{ background: rgba(111,207,151,0.14); border:1px solid var(--focus); color: var(--focus); }
+  .result-banner.imposter-win{ background: rgba(194,59,59,0.14); border:1px solid var(--red); color: var(--red); }
+
+  .waiting-note{
+    text-align:center; color: var(--line-soft); font-size:14px; padding: 8px 0 4px;
+  }
+
+  .error-banner{
+    background: rgba(194,59,59,0.15); border:1px solid var(--red); color: var(--red-ink);
+    padding:10px 14px; border-radius:5px; font-size:13.5px; margin-bottom:16px;
+  }
+
+  .footer-note{ text-align:center; color: var(--line-faint); font-size:12px; margin-top: 14px; line-height:1.6; }
+  a.linklike{ color: var(--gold); }
+
+  .stack{ display:flex; flex-direction:column; gap:10px; }
+
+  @media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
+</style>
+</head>
+<body>
+<div class="pitch-bg"></div>
+<div id="app"></div>
+<script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-analytics.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
+
+  // Your web app's Firebase configuration
+  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+  const firebaseConfig = {
+    apiKey: "AIzaSyCDj2fNq1_N_LWt21JMzeH0iI13peoS4S8",
+    authDomain: "football-imposter-14284.firebaseapp.com",
+    projectId: "football-imposter-14284",
+    storageBucket: "football-imposter-14284.firebasestorage.app",
+    messagingSenderId: "918233517480",
+    appId: "1:918233517480:web:7c23a34496ce4be473e19d",
+    measurementId: "G-9Y00DMVM0E"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+</script>
+<script>
+(function(){
+
+  // ---------------------------------------------------------------------
+  // Footballer pool — 250 current players + 50 all-time legends = 300 total.
+  // Each entry carries two hints; when a player is the imposter they are
+  // secretly shown ONE of the two, picked at random, instead of the name.
+  // ---------------------------------------------------------------------
+const FOOTBALLERS = [
+  {name:"Pelé", era:"legend", hints:["The King","Brazilian"]},
+  {name:"Diego Maradona", era:"legend", hints:["Rebel genius","Short"]},
+  {name:"Johan Cruyff", era:"legend", hints:["Philosopher","Dutch"]},
+  {name:"Franz Beckenbauer", era:"legend", hints:["The Emperor","German sweeper"]},
+  {name:"Ferenc Puskás", era:"legend", hints:["The Cannon","Hungarian"]},
+  {name:"Alfredo Di Stéfano", era:"legend", hints:["The Arrow","Played for two countries"]},
+  {name:"Eusébio", era:"legend", hints:["The Comet","Portuguese"]},
+  {name:"George Best", era:"legend", hints:["The Fifth one","Northern Irish winger"]},
+  {name:"Bobby Moore", era:"legend", hints:["Ice in his veins","West Ham defender"]},
+  {name:"Bobby Charlton", era:"legend", hints:["The Survivor","Manchester United great"]},
+  {name:"Gordon Banks", era:"legend", hints:["The Wall","1966 goalkeeper"]},
+  {name:"Geoff Hurst", era:"legend", hints:["The Trio","1966 hero"]},
+  {name:"Michel Platini", era:"legend", hints:["The General","French"]},
+  {name:"Zinedine Zidane", era:"legend", hints:["The Maestro","Bald"]},
+  {name:"Ronaldo Nazário", era:"legend", hints:["The Comet","Brazilian striker"]},
+  {name:"Ronaldinho", era:"legend", hints:["The Smile","Buck-toothed"]},
+  {name:"Kaká", era:"legend", hints:["The Gentleman","Brazilian playmaker"]},
+  {name:"Roberto Baggio", era:"legend", hints:["The Divine one","Ponytail"]},
+  {name:"Paolo Maldini", era:"legend", hints:["Pure elegance","AC Milan captain"]},
+  {name:"Franco Baresi", era:"legend", hints:["The Sweeper king","AC Milan sweeper"]},
+  {name:"Andrea Pirlo", era:"legend", hints:["The Architect","Deep playmaker"]},
+  {name:"Gianluigi Buffon", era:"legend", hints:["The Wall","2006 goalkeeper"]},
+  {name:"Francesco Totti", era:"legend", hints:["The Loyalist","Roma legend"]},
+  {name:"Alessandro Del Piero", era:"legend", hints:["The Curler","Juventus legend"]},
+  {name:"Fabio Cannavaro", era:"legend", hints:["The Rock","2006 captain"]},
+  {name:"Marco van Basten", era:"legend", hints:["The Swan","Career cut short"]},
+  {name:"Ruud Gullit", era:"legend", hints:["The Lion","Dutch trio"]},
+  {name:"Frank Rijkaard", era:"legend", hints:["The Enforcer","Later a manager"]},
+  {name:"Dennis Bergkamp", era:"legend", hints:["Ice Man","Famous turn v Newcastle"]},
+  {name:"Luís Figo", era:"legend", hints:["The Defector","2000 Ballon d'Or"]},
+  {name:"Rui Costa", era:"legend", hints:["The Poet","Elegant Portuguese"]},
+  {name:"Raúl González", era:"legend", hints:["The Icon","Real Madrid legend"]},
+  {name:"Xavi Hernández", era:"legend", hints:["The Conductor","Barcelona midfielder"]},
+  {name:"Andrés Iniesta", era:"legend", hints:["The Ghost","Quiet genius"]},
+  {name:"Iker Casillas", era:"legend", hints:["The Saint","2010 captain"]},
+  {name:"David Beckham", era:"legend", hints:["The Poster boy","Married a pop star"]},
+  {name:"Steven Gerrard", era:"legend", hints:["The Warrior","Liverpool captain"]},
+  {name:"Frank Lampard", era:"legend", hints:["The Engine","Chelsea's top scorer"]},
+  {name:"Wayne Rooney", era:"legend", hints:["The Bull","England's record scorer"]},
+  {name:"Paul Scholes", era:"legend", hints:["Quiet genius","Never chased the ball"]},
+  {name:"Ryan Giggs", era:"legend", hints:["The Evergreen one","Very long career"]},
+  {name:"Thierry Henry", era:"legend", hints:["Mr Cool","Invincibles"]},
+  {name:"Patrick Vieira", era:"legend", hints:["The Giant","Invincibles captain"]},
+  {name:"Didier Drogba", era:"legend", hints:["The Talisman","Chelsea talisman"]},
+  {name:"Samuel Eto'o", era:"legend", hints:["The Hunter","Cameroon striker"]},
+  {name:"George Weah", era:"legend", hints:["The President","Became a head of state"]},
+  {name:"Zico", era:"legend", hints:["The Artist","Free-kick specialist"]},
+  {name:"Sócrates", era:"legend", hints:["The Doctor","Backheels"]},
+  {name:"Garrincha", era:"legend", hints:["Pure joy","Bent legs, dribbler"]},
+  {name:"Carlos Alberto Torres", era:"legend", hints:["The Finisher","1970 captain"]},
+  {name:"Lionel Messi", era:"current", hints:["The Flea","Argentine, left-footed"]},
+  {name:"Cristiano Ronaldo", era:"current", hints:["The Machine","Signature jump celebration"]},
+  {name:"Kylian Mbappé", era:"current", hints:["The Rocket","French forward"]},
+  {name:"Erling Haaland", era:"current", hints:["The Terminator","Norwegian striker"]},
+  {name:"Robert Lewandowski", era:"current", hints:["The Assassin","Polish striker"]},
+  {name:"Karim Benzema", era:"current", hints:["The Late bloomer","French striker"]},
+  {name:"Luka Modrić", era:"current", hints:["The Maestro","Croatian midfielder"]},
+  {name:"Kevin De Bruyne", era:"current", hints:["The Laser","Belgian playmaker"]},
+  {name:"Mohamed Salah", era:"current", hints:["The King","Liverpool winger"]},
+  {name:"Sadio Mané", era:"current", hints:["The Sprinter","Senegalese winger"]},
+  {name:"Sergio Ramos", era:"current", hints:["Mr Late Drama","Spanish defender"]},
+  {name:"Neymar", era:"current", hints:["The Prince","Brazilian forward"]},
+  {name:"Antoine Griezmann", era:"current", hints:["The Cool head","French forward"]},
+  {name:"Raphaël Varane", era:"current", hints:["Mr Reliable","French centre-back"]},
+  {name:"Hugo Lloris", era:"current", hints:["The Guardian","French goalkeeper"]},
+  {name:"Olivier Giroud", era:"current", hints:["The Acrobat","France's top scorer"]},
+  {name:"Marco Verratti", era:"current", hints:["The Metronome","Small Italian midfielder"]},
+  {name:"Gianluigi Donnarumma", era:"current", hints:["The Prodigy","Young Italian goalkeeper"]},
+  {name:"Federico Chiesa", era:"current", hints:["The Arrow","Italian winger"]},
+  {name:"Ciro Immobile", era:"current", hints:["The Sniper","Italian striker"]},
+  {name:"Lorenzo Insigne", era:"current", hints:["Small but deadly","Italian winger"]},
+  {name:"Marcelo", era:"current", hints:["The Showman","Brazilian left-back"]},
+  {name:"Dani Alves", era:"current", hints:["The Collector","Brazilian right-back"]},
+  {name:"Thiago Silva", era:"current", hints:["The Monster","Brazilian centre-back"]},
+  {name:"Casemiro", era:"current", hints:["The Shield","Brazilian anchor"]},
+  {name:"Fabinho", era:"current", hints:["The Lighthouse","Brazilian midfielder"]},
+  {name:"Philippe Coutinho", era:"current", hints:["The Magician","Brazilian playmaker"]},
+  {name:"Willian", era:"current", hints:["The Craftsman","Brazilian winger"]},
+  {name:"Radamel Falcao", era:"current", hints:["The Tiger","Colombian striker"]},
+  {name:"James Rodríguez", era:"current", hints:["The Golden left foot","Colombian playmaker"]},
+  {name:"Juan Cuadrado", era:"current", hints:["The Engine","Colombian wing-back"]},
+  {name:"Alexis Sánchez", era:"current", hints:["The Marvel boy","Chilean forward"]},
+  {name:"Arturo Vidal", era:"current", hints:["The Warrior King","Chilean midfielder"]},
+  {name:"Claudio Bravo", era:"current", hints:["The Wall","Chilean goalkeeper"]},
+  {name:"Javier Zanetti", era:"current", hints:["Mr Reliable","Argentine full-back"]},
+  {name:"Gonzalo Higuaín", era:"current", hints:["The Nearly man","Argentine striker"]},
+  {name:"Sergio Agüero", era:"current", hints:["The Assassin","Argentine striker"]},
+  {name:"Ángel Di María", era:"current", hints:["The Noodle","Skinny Argentine winger"]},
+  {name:"Lautaro Martínez", era:"current", hints:["The Bull","Argentine striker"]},
+  {name:"Julián Álvarez", era:"current", hints:["The Spider","Young Argentine forward"]},
+  {name:"Rodrigo De Paul", era:"current", hints:["The Motor","Argentine midfielder"]},
+  {name:"Emiliano Martínez", era:"current", hints:["The Wall","Argentine goalkeeper"]},
+  {name:"Enzo Fernández", era:"current", hints:["The Wonderkid","Argentine midfielder"]},
+  {name:"Marc-André ter Stegen", era:"current", hints:["The Reflex","German goalkeeper"]},
+  {name:"Manuel Neuer", era:"current", hints:["The Sweeper-keeper","German goalkeeper"]},
+  {name:"Toni Kroos", era:"current", hints:["The Laser","German midfielder"]},
+  {name:"Mesut Özil", era:"current", hints:["The Ghost","German playmaker"]},
+  {name:"Mario Götze", era:"current", hints:["The Golden boy","German attacker"]},
+  {name:"İlkay Gündoğan", era:"current", hints:["Mr Composed","German-Turkish midfielder"]},
+  {name:"Joshua Kimmich", era:"current", hints:["The Swiss army knife","German midfielder"]},
+  {name:"Leon Goretzka", era:"current", hints:["The Powerhouse","German midfielder"]},
+  {name:"Jamal Musiala", era:"current", hints:["The Prodigy","Young German talent"]},
+  {name:"Timo Werner", era:"current", hints:["The Sprinter","German striker"]},
+  {name:"Kai Havertz", era:"current", hints:["The Gentle giant","Tall German attacker"]},
+  {name:"Leroy Sané", era:"current", hints:["The Rocket","German winger"]},
+  {name:"Marco Reus", era:"current", hints:["The Loyal one","German attacking midfielder"]},
+  {name:"Antonio Rüdiger", era:"current", hints:["The Beast","German centre-back"]},
+  {name:"Niklas Süle", era:"current", hints:["The Giant","German centre-back"]},
+  {name:"Franck Ribéry", era:"current", hints:["The Marked man","French winger"]},
+  {name:"Ousmane Dembélé", era:"current", hints:["The Ghost","French winger"]},
+  {name:"Kingsley Coman", era:"current", hints:["The Traitor's goal","French winger"]},
+  {name:"Presnel Kimpembe", era:"current", hints:["The Guardian","French centre-back"]},
+  {name:"Adrien Rabiot", era:"current", hints:["The Rebel","French midfielder"]},
+  {name:"Aurélien Tchouaméni", era:"current", hints:["The Anchor","French midfielder"]},
+  {name:"Eduardo Camavinga", era:"current", hints:["The Prodigy","French midfielder"]},
+  {name:"William Saliba", era:"current", hints:["The Late bloomer","Tall French defender"]},
+  {name:"Dayot Upamecano", era:"current", hints:["The Recovery man","French centre-back"]},
+  {name:"Theo Hernández", era:"current", hints:["The Overlapper","French left-back"]},
+  {name:"Lucas Hernández", era:"current", hints:["The Sibling","French left-back"]},
+  {name:"Marcus Rashford", era:"current", hints:["The Local hero","Manchester forward"]},
+  {name:"Jadon Sancho", era:"current", hints:["The Breakout kid","English winger"]},
+  {name:"Bukayo Saka", era:"current", hints:["The Kid who kept going","Arsenal winger"]},
+  {name:"Phil Foden", era:"current", hints:["The Wonderkid","Manchester midfielder"]},
+  {name:"Jack Grealish", era:"current", hints:["The Showman","English winger"]},
+  {name:"Declan Rice", era:"current", hints:["The Big move","English defensive midfielder"]},
+  {name:"Harry Kane", era:"current", hints:["The Record breaker","English striker"]},
+  {name:"Raheem Sterling", era:"current", hints:["The Academy graduate","English forward"]},
+  {name:"Jordan Henderson", era:"current", hints:["The Captain","Liverpool midfielder"]},
+  {name:"Jamie Vardy", era:"current", hints:["The Fairytale","Leicester counter-attacker"]},
+  {name:"Harry Maguire", era:"current", hints:["The Big-money man","English centre-back"]},
+  {name:"John Stones", era:"current", hints:["The Ball player","English defender"]},
+  {name:"Kyle Walker", era:"current", hints:["The Sprinter","English right-back"]},
+  {name:"Trent Alexander-Arnold", era:"current", hints:["The Local lad","English right-back"]},
+  {name:"Virgil van Dijk", era:"current", hints:["The Colossus","Dutch centre-back"]},
+  {name:"Jordan Pickford", era:"current", hints:["Mr Reliable","English goalkeeper"]},
+  {name:"Roy Keane", era:"current", hints:["The Enforcer","Irish midfielder"]},
+  {name:"Rio Ferdinand", era:"current", hints:["The Big-money defender","English centre-back"]},
+  {name:"Ashley Cole", era:"current", hints:["The Best of his kind","English left-back"]},
+  {name:"John Terry", era:"current", hints:["The Slip","English captain"]},
+  {name:"Riyad Mahrez", era:"current", hints:["The Fairytale winger","Algerian winger"]},
+  {name:"Victor Osimhen", era:"current", hints:["The Top scorer","Nigerian striker"]},
+  {name:"Achraf Hakimi", era:"current", hints:["The Rocket","Moroccan right-back"]},
+  {name:"Hakim Ziyech", era:"current", hints:["The Showman","Moroccan winger"]},
+  {name:"Naby Keïta", era:"current", hints:["The Engine","Guinean midfielder"]},
+  {name:"Thomas Partey", era:"current", hints:["The Destroyer","Ghanaian midfielder"]},
+  {name:"André Ayew", era:"current", hints:["The Family name","Ghanaian forward"]},
+  {name:"Asamoah Gyan", era:"current", hints:["The Sprinter","Ghanaian striker"]},
+  {name:"Emmanuel Adebayor", era:"current", hints:["The Celebrator","Togolese striker"]},
+  {name:"Sadio Mane", era:"current", hints:["The Sprinter","Senegalese winger"]},
+  {name:"Kalidou Koulibaly", era:"current", hints:["The Wall","Senegalese centre-back"]},
+  {name:"Édouard Mendy", era:"current", hints:["The Guardian","Senegalese goalkeeper"]},
+  {name:"Son Heung-min", era:"current", hints:["The Sniper","South Korean forward"]},
+  {name:"Takefusa Kubo", era:"current", hints:["The Heir apparent","Japanese winger"]},
+  {name:"Kaoru Mitoma", era:"current", hints:["The Magician","Japanese winger"]},
+  {name:"Sunil Chhetri", era:"current", hints:["The Trailblazer","Indian forward"]},
+  {name:"Federico Valverde", era:"current", hints:["The Engine","Uruguayan midfielder"]},
+  {name:"Darwin Núñez", era:"current", hints:["The Wrecking ball","Uruguayan striker"]},
+  {name:"Diego Godín", era:"current", hints:["The Rock","Uruguayan centre-back"]},
+  {name:"Rafael Márquez", era:"current", hints:["The Elder statesman","Mexican centre-back"]},
+  {name:"Javier Hernández", era:"current", hints:["The Poacher","Mexican striker"]},
+  {name:"Andrés Guardado", era:"current", hints:["The Little prince","Mexican midfielder"]},
+  {name:"Giovani dos Santos", era:"current", hints:["The Flair player","Mexican forward"]},
+  {name:"Vinícius Júnior", era:"current", hints:["The Firework","Brazilian winger"]},
+  {name:"Rodrygo", era:"current", hints:["The Super sub hero","Brazilian forward"]},
+  {name:"Endrick", era:"current", hints:["The Heir","Young Brazilian striker"]},
+  {name:"Pedri", era:"current", hints:["The Old soul","Spanish talent"]},
+  {name:"Gavi", era:"current", hints:["The Firecracker","Young Spanish midfielder"]},
+  {name:"Ansu Fati", era:"current", hints:["The Chosen one","Spanish winger"]},
+  {name:"Ferran Torres", era:"current", hints:["The Versatile one","Spanish attacker"]},
+  {name:"Aymeric Laporte", era:"current", hints:["The Convert","Centre-back for Spain"]},
+  {name:"Nicolò Barella", era:"current", hints:["The Battery","Italian midfielder"]},
+  {name:"Federico Dimarco", era:"current", hints:["The Whip","Italian left-back"]},
+  {name:"Alessandro Bastoni", era:"current", hints:["The Elegant one","Young Italian centre-back"]},
+  {name:"Gianluca Scamacca", era:"current", hints:["The Tower","Italian striker"]},
+  {name:"Sandro Tonali", era:"current", hints:["The Heir apparent","Italian midfielder"]},
+  {name:"Nicolò Zaniolo", era:"current", hints:["The Chameleon","Italian midfielder"]},
+  {name:"Rafael Leão", era:"current", hints:["The Rocket","Portuguese winger"]},
+  {name:"Mike Maignan", era:"current", hints:["The Sweeper-keeper","French goalkeeper"]},
+  {name:"Khvicha Kvaratskhelia", era:"current", hints:["The Wizard","Georgian winger"]},
+  {name:"Gareth Bale", era:"current", hints:["The Price tag","Welsh winger"]},
+  {name:"Aaron Ramsey", era:"current", hints:["The Late runner","Welsh midfielder"]},
+  {name:"Alphonso Davies", era:"current", hints:["The Fairytale","Canadian left-back"]},
+  {name:"Alexander Isak", era:"current", hints:["The Silky one","Swedish striker"]},
+  {name:"Viktor Gyökeres", era:"current", hints:["The Machine","Swedish striker"]},
+  {name:"Dušan Vlahović", era:"current", hints:["The Aerial threat","Serbian striker"]},
+  {name:"Weston McKennie", era:"current", hints:["The Motor","American midfielder"]},
+  {name:"Christian Pulisic", era:"current", hints:["The Star-spangled one","American winger"]},
+  {name:"Landon Donovan", era:"current", hints:["The Homegrown hero","American forward"]},
+  {name:"Clint Dempsey", era:"current", hints:["The Deuce","American forward"]},
+  {name:"Tim Howard", era:"current", hints:["The Wall","American goalkeeper"]},
+  {name:"Yunus Musah", era:"current", hints:["The Multi-national one","American midfielder"]},
+  {name:"Folarin Balogun", era:"current", hints:["The Chosen path","American striker"]},
+  {name:"Marc Overmars", era:"current", hints:["The Flash","Dutch winger"]},
+  {name:"Gheorghe Hagi", era:"current", hints:["The Carpathian one","Romanian great"]},
+  {name:"Hristo Stoichkov", era:"current", hints:["The Firecracker","Bulgarian forward"]},
+  {name:"Davor Šuker", era:"current", hints:["The Sniper","Croatian striker"]},
+  {name:"Zvonimir Boban", era:"current", hints:["The Rebel","Croatian midfielder"]},
+  {name:"Predrag Mijatović", era:"current", hints:["The Assassin","Serbian-Montenegrin forward"]},
+  {name:"Lothar Matthäus", era:"current", hints:["The Captain","German midfielder"]},
+  {name:"Michael Ballack", era:"current", hints:["The Nearly man","German midfielder"]},
+  {name:"Bastian Schweinsteiger", era:"current", hints:["The Warrior","German midfielder"]},
+  {name:"Philipp Lahm", era:"current", hints:["The Little emperor","German captain"]},
+  {name:"Miroslav Klose", era:"current", hints:["The Front-flip man","German striker"]},
+  {name:"Jürgen Klinsmann", era:"current", hints:["The Diver's joke","German striker"]},
+  {name:"Oliver Kahn", era:"current", hints:["The Titan","German goalkeeper"]},
+  {name:"Xabi Alonso", era:"current", hints:["The Long-range general","Spanish midfielder"]},
+  {name:"David Villa", era:"current", hints:["The Sharpshooter","Spanish striker"]},
+  {name:"Fernando Torres", era:"current", hints:["The Golden boy","Spanish striker"]},
+  {name:"Cesc Fàbregas", era:"current", hints:["The Youngest captain","Spanish midfielder"]},
+  {name:"David Silva", era:"current", hints:["The Wizard","Small Spanish playmaker"]},
+  {name:"Isco", era:"current", hints:["The Flair player","Spanish attacking midfielder"]},
+  {name:"Marco Asensio", era:"current", hints:["The Long-range threat","Spanish forward"]},
+  {name:"Dani Carvajal", era:"current", hints:["The Tenacious one","Spanish defender"]},
+  {name:"Jordi Alba", era:"current", hints:["The Overlapper","Spanish left-back"]},
+  {name:"Pau Torres", era:"current", hints:["The Passer","Spanish centre-back"]},
+  {name:"Rodri", era:"current", hints:["The Anchor","Spanish midfielder"]},
+  {name:"Pau Cubarsí", era:"current", hints:["The Teenage starter","Composed young defender"]},
+  {name:"Lamine Yamal", era:"current", hints:["The Chosen one","Teenage Barcelona winger"]},
+  {name:"Ivan Rakitić", era:"current", hints:["The Final goal man","Croatian midfielder"]},
+  {name:"Mateo Kovačić", era:"current", hints:["The Escape artist","Croatian midfielder"]},
+  {name:"Dejan Lovren", era:"current", hints:["The Combative one","Croatian centre-back"]},
+  {name:"Dominik Livaković", era:"current", hints:["The Shootout hero","Croatian goalkeeper"]},
+  {name:"Josip Iličić", era:"current", hints:["The Four-goal man","Slovenian-born forward"]},
+  {name:"Ademola Lookman", era:"current", hints:["The Final hero","Nigerian-English forward"]},
+  {name:"Idrissa Gueye", era:"current", hints:["The Destroyer","Senegalese midfielder"]},
+  {name:"Pape Matar Sarr", era:"current", hints:["The Engine","Senegalese midfielder"]},
+  {name:"Mohamed Aboutrika", era:"current", hints:["The Legend at home","Egyptian playmaker"]},
+  {name:"Essam El-Hadary", era:"current", hints:["The Elder statesman","Egyptian goalkeeper"]},
+  {name:"El Hadji Diouf", era:"current", hints:["The Provocateur","Senegalese forward"]},
+  {name:"Nwankwo Kanu", era:"current", hints:["The Survivor","Nigerian forward"]},
+  {name:"Rigobert Song", era:"current", hints:["The Veteran","Cameroonian defender"]},
+  {name:"Jay-Jay Okocha", era:"current", hints:["The Twice-named one","Nigerian dribbler"]},
+  {name:"Michael Essien", era:"current", hints:["The Bison","Ghanaian midfielder"]},
+  {name:"Yaya Touré", era:"current", hints:["The Powerhouse","Ivorian midfielder"]},
+  {name:"Nicolás Otamendi", era:"current", hints:["The Rock","Argentine centre-back"]},
+  {name:"Marcos Acuña", era:"current", hints:["The Egg","Argentine left-back"]},
+  {name:"Cristian Romero", era:"current", hints:["The Aggressor","Argentine defender"]},
+  {name:"Alexis Mac Allister", era:"current", hints:["The Breakout star","Argentine midfielder"]},
+  {name:"Nahuel Molina", era:"current", hints:["The Overlapper","Argentine right-back"]},
+  {name:"Ángel Correa", era:"current", hints:["The Presser","Argentine forward"]},
+  {name:"Paulo Dybala", era:"current", hints:["The Masked one","Argentine forward"]},
+  {name:"Leandro Paredes", era:"current", hints:["The Passer","Argentine midfielder"]},
+  {name:"Richarlison", era:"current", hints:["The Pigeon","Brazilian forward"]},
+  {name:"Gabriel Jesus", era:"current", hints:["The Chosen name","Brazilian forward"]},
+  {name:"Fred", era:"current", hints:["The Presser","Brazilian midfielder"]},
+  {name:"Alex Sandro", era:"current", hints:["The Overlapper","Brazilian left-back"]},
+  {name:"Danilo", era:"current", hints:["The Utility man","Brazilian right-back"]},
+  {name:"Éder Militão", era:"current", hints:["The Powerhouse","Brazilian centre-back"]},
+  {name:"Antony", era:"current", hints:["The Spinner","Brazilian winger"]},
+  {name:"Bruno Guimarães", era:"current", hints:["The Conductor","Brazilian midfielder"]},
+  {name:"Raphinha", era:"current", hints:["The Craftsman","Brazilian winger"]},
+  {name:"Ederson", era:"current", hints:["The Long-range keeper","Brazilian goalkeeper"]},
+  {name:"Alisson Becker", era:"current", hints:["The Late hero","Brazilian goalkeeper"]},
+  {name:"Marquinhos", era:"current", hints:["The Reader","Brazilian centre-back"]},
+  {name:"Lucas Paquetá", era:"current", hints:["The Versatile one","Brazilian midfielder"]},
+  {name:"Matheus Cunha", era:"current", hints:["The Physical one","Brazilian forward"]},
+  {name:"João Cancelo", era:"current", hints:["The Wing wizard","Portuguese full-back"]},
+  {name:"João Félix", era:"current", hints:["The Price tag","Young Portuguese forward"]},
+  {name:"Bernardo Silva", era:"current", hints:["The Tireless one","Portuguese midfielder"]},
+  {name:"Bruno Fernandes", era:"current", hints:["The Slider","Portuguese midfielder"]},
+  {name:"Rúben Dias", era:"current", hints:["The Transformer","Portuguese centre-back"]},
+  {name:"Diogo Jota", era:"current", hints:["The Finisher","Portuguese forward"]},
+  {name:"William Carvalho", era:"current", hints:["The Ball-winner","Portuguese midfielder"]},
+  {name:"Nuno Mendes", era:"current", hints:["The Flair full-back","Young Portuguese left-back"]},
+  {name:"Pepe", era:"current", hints:["The Ageless one","Combustible Portuguese defender"]},
+  {name:"Nani", era:"current", hints:["The Acrobat","Portuguese winger"]},
+  {name:"Christian Eriksen", era:"current", hints:["The Comeback","Danish playmaker"]},
+  {name:"Simon Kjær", era:"current", hints:["The Quick responder","Danish centre-back"]},
+  {name:"Kasper Schmeichel", era:"current", hints:["The Son of a legend","Danish goalkeeper"]},
+  {name:"Pierre-Emerick Aubameyang", era:"current", hints:["The Sprinter","Gabonese striker"]},
+  {name:"Mohammed Kudus", era:"current", hints:["The Craftsman","Ghanaian winger"]},
+  {name:"Iñaki Williams", era:"current", hints:["The Sprinter","Ghanaian-Spanish forward"]},
+  {name:"Serge Gnabry", era:"current", hints:["The Four-goal man","German winger"]},
+  {name:"Mats Hummels", era:"current", hints:["The Passer","German centre-back"]},
+  {name:"Thomas Müller", era:"current", hints:["The Space investigator","German forward"]},
+  {name:"Manuel Akanji", era:"current", hints:["The Composed one","Swiss centre-back"]},
+  {name:"Granit Xhaka", era:"current", hints:["The Reformed captain","Swiss midfielder"]},
+  {name:"Xherdan Shaqiri", era:"current", hints:["The Alpine one","Swiss forward"]},
+  {name:"Breel Embolo", era:"current", hints:["The Homecoming goal","Swiss-Cameroonian striker"]},
+  {name:"Yann Sommer", era:"current", hints:["The Reliable one","Swiss goalkeeper"]},
+  {name:"Piotr Zieliński", era:"current", hints:["The Versatile passer","Polish midfielder"]},
+  {name:"Wojciech Szczęsny", era:"current", hints:["The Shot-stopper","Polish goalkeeper"]},
+  {name:"Alexander Sørloth", era:"current", hints:["The Aerial threat","Norwegian striker"]},
+  {name:"Martin Ødegaard", era:"current", hints:["The Prodigy captain","Norwegian playmaker"]},
+  {name:"Rasmus Højlund", era:"current", hints:["The Direct runner","Danish striker"]},
+  {name:"Joachim Andersen", era:"current", hints:["The Composed one","Danish centre-back"]},
+  {name:"Pierre Højbjerg", era:"current", hints:["The Disciplinarian","Danish midfielder"]},
+  {name:"Oleksandr Zinchenko", era:"current", hints:["The Composed one","Ukrainian full-back"]},
+  {name:"Emil Forsberg", era:"current", hints:["The Set-piece man","Swedish playmaker"]},
+  {name:"Dejan Kulusevski", era:"current", hints:["The Direct one","Swedish winger"]},
+  {name:"Teemu Pukki", era:"current", hints:["The Composed finisher","Finnish striker"]},
+  {name:"Mykhailo Mudryk", era:"current", hints:["The Rocket","Ukrainian winger"]},
+  {name:"Domenico Berardi", era:"current", hints:["The Sharpshooter","Italian winger"]},
+  {name:"Jorginho", era:"current", hints:["The Metronome","Italian-Brazilian midfielder"]},
+  {name:"Leonardo Bonucci", era:"current", hints:["The Long passer","Italian centre-back"]},
+  {name:"Giorgio Chiellini", era:"current", hints:["The No-nonsense one","Italian captain"]},
+  {name:"Wilfried Zaha", era:"current", hints:["The Dribbler","Ivorian-born winger"]},
+  {name:"Franck Kessié", era:"current", hints:["The Powerhouse","Ivorian midfielder"]},
+  {name:"Nicolas Pépé", era:"current", hints:["The Record fee","Ivorian winger"]},
+  {name:"Sébastien Haller", era:"current", hints:["The Survivor","Ivorian-French striker"]},
+];
+
+  const AVATAR_PALETTE = ["#D6A93B","#6FCF97","#C23B3B","#7EA6C9","#B389D6","#E08E5C","#5FB0A6","#D98CB3"];
+
+  function colorForId(id){
+    let h = 0;
+    for (let i=0;i<id.length;i++){ h = (h*31 + id.charCodeAt(i)) >>> 0; }
+    return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
+  }
+  function initials(name){
+    const parts = (name||"?").trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return "?";
+    return (parts[0][0] + (parts[1] ? parts[1][0] : "")).toUpperCase();
+  }
+  function makeRoomCode(){
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no O/0, I/1
+    let s = "";
+    for (let i=0;i<4;i++) s += chars[Math.floor(Math.random()*chars.length)];
+    return s;
+  }
+  function pickRandom(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+  function escapeHtml(s){
+    return String(s==null?"":s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  // ---------------------------------------------------------------------
+  // State
+  // ---------------------------------------------------------------------
+  const state = {
+    ready: false,             // capabilities resolved
+    dbAvailable: false,
+    myId: null,
+    myName: "",
+    nameDraft: "",
+    joinCodeDraft: "",
+    screen: "landing",        // landing | lobby | game
+    roomCode: null,
+    room: null,               // room doc data
+    players: [],              // [{id, name, joinedAt}]
+    clues: {},                 // id -> {clue, round, name}
+    votes: {},                 // id(voter) -> {votedFor, round}
+    error: null,
+    myVote: null,
+  };
+
+  // ---------------------------------------------------------------------
+  // PASTE YOUR FIREBASE CONFIG HERE (see setup comment near the top of
+  // the <head>). Everything else in this file works as-is once this is set.
+  // ---------------------------------------------------------------------
+  const FIREBASE_CONFIG = {
+    apiKey: "PASTE_YOUR_API_KEY_HERE",
+    authDomain: "YOUR-PROJECT.firebaseapp.com",
+    projectId: "YOUR-PROJECT",
+    storageBucket: "YOUR-PROJECT.appspot.com",
+    messagingSenderId: "000000000000",
+    appId: "1:000000000000:web:xxxxxxxxxxxxxxxx",
+  };
+
+  let db = null;
+  let unsubRoom = null, unsubPlayers = null, unsubClues = null, unsubVotes = null;
+
+  function clearSubs(){
+    [unsubRoom, unsubPlayers, unsubClues, unsubVotes].forEach(u => { try{ u && u(); }catch(e){} });
+    unsubRoom = unsubPlayers = unsubClues = unsubVotes = null;
+  }
+
+  // ---------------------------------------------------------------------
+  // Persistence of light session info (room code + display name only)
+  // ---------------------------------------------------------------------
+  function saveSession(){
+    try{
+      localStorage.setItem("fi_session", JSON.stringify({ roomCode: state.roomCode, name: state.myName }));
+    }catch(e){}
+  }
+  function loadSession(){
+    try{
+      const raw = localStorage.getItem("fi_session");
+      return raw ? JSON.parse(raw) : null;
+    }catch(e){ return null; }
+  }
+  function clearSession(){
+    try{ localStorage.removeItem("fi_session"); }catch(e){}
+  }
+  function getAnonId(){
+    try{
+      let id = localStorage.getItem("fi_anon_id");
+      if (!id){
+        id = "anon-" + Math.random().toString(36).slice(2,10) + Date.now().toString(36);
+        localStorage.setItem("fi_anon_id", id);
+      }
+      return id;
+    }catch(e){ return "anon-" + Math.random().toString(36).slice(2,10); }
+  }
+
+  // ---------------------------------------------------------------------
+  // Init
+  // ---------------------------------------------------------------------
+  async function init(){
+    render(); // initial shell so the page never looks blank
+
+    try{
+      if (!FIREBASE_CONFIG || FIREBASE_CONFIG.apiKey === "PASTE_YOUR_API_KEY_HERE"){
+        throw new Error("Firebase isn't configured yet.");
+      }
+      firebase.initializeApp(FIREBASE_CONFIG);
+      db = firebase.firestore();
+    }catch(e){
+      db = null;
+      state.error = "This page needs a Firebase project connected before it can host games — see the setup comment near the top of the HTML file.";
+    }
+
+    state.dbAvailable = !!db;
+
+    // No login system here — every visitor just gets a private random id
+    // stored in their own browser, so they can rejoin the same room on
+    // reload but nobody else can impersonate them.
+    state.myId = getAnonId();
+
+    state.ready = true;
+
+    const sess = loadSession();
+    if (sess && sess.roomCode){
+      state.myName = sess.name || state.nameDraft;
+      await rejoinRoom(sess.roomCode);
+    }
+    render();
+  }
+
+  // ---------------------------------------------------------------------
+  // Room operations
+  // ---------------------------------------------------------------------
+  async function createRoom(name){
+    if (!db){ state.error = "Multiplayer isn't available in this view."; render(); return; }
+    state.error = null;
+    let code, roomRef, snap;
+    for (let attempt=0; attempt<8; attempt++){
+      code = makeRoomCode();
+      roomRef = db.doc("rooms/" + code);
+      try{
+        snap = await roomRef.get();
+      }catch(e){ state.error = "Couldn't reach the game server. Try again."; render(); return; }
+      if (!snap.exists) break;
+      roomRef = null;
+    }
+    if (!roomRef){ state.error = "Couldn't find a free room code — try again."; render(); return; }
+
+    try{
+      await roomRef.set({
+        hostId: state.myId,
+        status: "lobby",
+        round: 0,
+        footballer: null,
+        imposterId: null,
+        createdAt: Date.now(),
+      });
+      await roomRef.collection("players").doc(state.myId).set({
+        name: name, joinedAt: Date.now(),
+      });
+    }catch(e){
+      state.error = "Couldn't create the room. Try again.";
+      render();
+      return;
+    }
+    state.myName = name;
+    state.roomCode = code;
+    saveSession();
+    subscribeToRoom(code);
+  }
+
+  async function joinRoom(code, name){
+    if (!db){ state.error = "Multiplayer isn't available in this view."; render(); return; }
+    code = (code||"").trim().toUpperCase();
+    if (!code){ state.error = "Enter a room code."; render(); return; }
+    state.error = null;
+    const roomRef = db.doc("rooms/" + code);
+    let snap;
+    try{
+      snap = await roomRef.get();
+    }catch(e){ state.error = "Couldn't reach the game server. Try again."; render(); return; }
+    if (!snap.exists){
+      state.error = "No room with that code. Double-check with your host.";
+      render();
+      return;
+    }
+    try{
+      await roomRef.collection("players").doc(state.myId).set({
+        name: name, joinedAt: Date.now(),
+      });
+    }catch(e){
+      state.error = "Couldn't join — you may not have access to this room's workspace.";
+      render();
+      return;
+    }
+    state.myName = name;
+    state.roomCode = code;
+    saveSession();
+    subscribeToRoom(code);
+  }
+
+  async function rejoinRoom(code){
+    if (!db) return;
+    const roomRef = db.doc("rooms/" + code);
+    try{
+      const snap = await roomRef.get();
+      if (!snap.exists){ clearSession(); return; }
+    }catch(e){ return; }
+    state.roomCode = code;
+    subscribeToRoom(code);
+  }
+
+  function subscribeToRoom(code){
+    clearSubs();
+    state.screen = "lobby";
+    const roomRef = db.doc("rooms/" + code);
+
+    unsubRoom = roomRef.onSnapshot(snap => {
+      if (!snap.exists){
+        state.error = "This room no longer exists.";
+        leaveRoom(false);
+        return;
+      }
+      state.room = snap.data();
+      render();
+    }, err => {
+      state.error = "Lost connection to the room.";
+      render();
+    });
+
+    unsubPlayers = roomRef.collection("players").orderBy("joinedAt", "asc").onSnapshot(snap => {
+      state.players = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+      render();
+    });
+
+    unsubClues = roomRef.collection("clues").onSnapshot(snap => {
+      const map = {};
+      snap.docs.forEach(d => { map[d.id] = d.data(); });
+      state.clues = map;
+      render();
+    });
+
+    unsubVotes = roomRef.collection("votes").onSnapshot(snap => {
+      const map = {};
+      snap.docs.forEach(d => { map[d.id] = d.data(); });
+      state.votes = map;
+      state.myVote = (map[state.myId] && map[state.myId].votedFor) || null;
+      render();
+    });
+  }
+
+  async function leaveRoom(clearData){
+    clearSubs();
+    if (clearData !== false && db && state.roomCode && state.myId){
+      try{
+        await db.doc("rooms/" + state.roomCode).collection("players").doc(state.myId).delete();
+      }catch(e){}
+    }
+    state.roomCode = null;
+    state.room = null;
+    state.players = [];
+    state.clues = {};
+    state.votes = {};
+    state.myVote = null;
+    state.screen = "landing";
+    clearSession();
+    render();
+  }
+
+  function isHost(){
+    if (!state.room) return false;
+    if (state.room.hostId === state.myId) return true;
+    // host fallback: if the recorded host has left, the earliest-joined remaining player may act as host
+    const hostStillHere = state.players.some(p => p.id === state.room.hostId);
+    if (hostStillHere) return false;
+    if (!state.players.length) return false;
+    return state.players[0].id === state.myId;
+  }
+
+  // ---------------------------------------------------------------------
+  // Game actions (host-gated)
+  // ---------------------------------------------------------------------
+  // Picks the footballer, imposter, the starting player, and which one of
+  // the footballer's two hints the imposter secretly gets, then writes the
+  // whole round setup to the room doc in one go.
+  async function beginRound(){
+    if (!isHost() || state.players.length < 3) return;
+    const footballer = pickRandom(FOOTBALLERS);
+    const imposterId = pickRandom(state.players).id;
+    const starterId = pickRandom(state.players).id; // anyone can start, imposter included
+    const hintForImposter = pickRandom(footballer.hints);
+    const round = (state.room.round || 0) + 1;
+    try{
+      await db.doc("rooms/" + state.roomCode).update({
+        status: "reveal",
+        footballer: footballer.name,
+        imposterId, starterId, hintForImposter, round,
+      });
+    }catch(e){ state.error = "Couldn't start the round."; render(); }
+  }
+  const startGame = beginRound;
+  const newRound = beginRound;
+
+  async function setPhase(phase){
+    if (!isHost()) return;
+    try{
+      await db.doc("rooms/" + state.roomCode).update({ status: phase });
+    }catch(e){ state.error = "Couldn't update the game."; render(); }
+  }
+
+  async function endToLobby(){
+    if (!isHost()) return;
+    try{
+      await db.doc("rooms/" + state.roomCode).update({ status: "lobby" });
+    }catch(e){}
+  }
+
+  async function submitClue(text){
+    text = (text||"").trim();
+    if (!text) return;
+    try{
+      await db.doc("rooms/" + state.roomCode).collection("clues").doc(state.myId).set({
+        clue: text.slice(0, 60), round: state.room.round, name: state.myName,
+      });
+    }catch(e){ state.error = "Couldn't submit your clue."; render(); }
+  }
+
+  async function castVote(targetId){
+    try{
+      await db.doc("rooms/" + state.roomCode).collection("votes").doc(state.myId).set({
+        votedFor: targetId, round: state.room.round,
+      });
+    }catch(e){ state.error = "Couldn't cast your vote."; render(); }
+  }
+
+  // ---------------------------------------------------------------------
+  // Render helpers
+  // ---------------------------------------------------------------------
+  function playersMap(){
+    const m = {};
+    state.players.forEach(p => m[p.id] = p);
+    return m;
+  }
+
+  function currentRoundClues(){
+    const out = [];
+    Object.keys(state.clues).forEach(pid => {
+      const c = state.clues[pid];
+      if (c && state.room && c.round === state.room.round) out.push(Object.assign({ id: pid }, c));
+    });
+    return out;
+  }
+
+  function currentRoundVotes(){
+    const out = {};
+    Object.keys(state.votes).forEach(pid => {
+      const v = state.votes[pid];
+      if (v && state.room && v.round === state.room.round) out[pid] = v.votedFor;
+    });
+    return out;
+  }
+
+  function tally(){
+    const counts = {};
+    const votes = currentRoundVotes();
+    Object.values(votes).forEach(target => { counts[target] = (counts[target]||0) + 1; });
+    return counts;
+  }
+
+  // ---------------------------------------------------------------------
+  // Screens
+  // ---------------------------------------------------------------------
+  function screenLanding(){
+    return `
+      <div class="wrap">
+        <div class="brand">
+          <span class="mark">⚽</span>
+          <h1>Football Imposter</h1>
+        </div>
+        ${state.error ? `<div class="error-banner">${escapeHtml(state.error)}</div>` : ""}
+        <div class="panel">
+          <h2>Your name</h2>
+          <p class="lead">This is what your teammates will see at the table.</p>
+          <div class="field">
+            <input type="text" id="nameInput" placeholder="e.g. Sam" value="${escapeHtml(state.nameDraft)}" maxlength="24" />
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Start a game</h2>
+          <p class="lead">Create a room and share the code with friends.</p>
+          <button class="primary" id="createBtn">Create a room</button>
+        </div>
+
+        <div class="divider">or join a friend's room</div>
+
+        <div class="panel">
+          <h2>Join a game</h2>
+          <div class="field">
+            <input type="text" id="joinCodeInput" class="code-input" placeholder="CODE" maxlength="4" value="${escapeHtml(state.joinCodeDraft)}" />
+          </div>
+          <button class="ghost" id="joinBtn">Join room</button>
+        </div>
+
+        <p class="footer-note">One player secretly doesn't know the footballer. Everyone else does. Give one-word clues, discuss, then vote out the imposter — before they blend in and win.${state.dbAvailable ? "" : " Multiplayer isn't connected yet on this copy of the page."}</p>
+      </div>
+    `;
+  }
+
+  function screenLobby(){
+    const room = state.room;
+    if (!room) return `<div class="wrap"><div class="panel"><p class="lead">Loading room…</p></div></div>`;
+    const host = isHost();
+    const canStart = host && state.players.length >= 3;
+
+    return `
+      <div class="wrap">
+        <div class="brand">
+          <span class="mark">⚽</span>
+          <h1>Football Imposter</h1>
+        </div>
+        ${state.error ? `<div class="error-banner">${escapeHtml(state.error)}</div>` : ""}
+
+        <div class="panel">
+          <div class="code-display">${escapeHtml(state.roomCode)}</div>
+          <div class="code-caption">Share this code — friends join from the same page.</div>
+
+          <h2>Players (${state.players.length})</h2>
+          <ul class="player-list">
+            ${state.players.map(p => `
+              <li class="player-row">
+                <div class="avatar" style="background:${colorForId(p.id)}">${escapeHtml(initials(p.name))}</div>
+                <div class="p-name">${escapeHtml(p.name || "Player")}</div>
+                ${p.id === room.hostId ? '<span class="tag host">Host</span>' : ""}
+                ${p.id === state.myId ? '<span class="tag you">You</span>' : ""}
+              </li>
+            `).join("")}
+          </ul>
+          ${state.players.length < 3 ? `<p class="empty-note">Need at least 3 players to start.</p>` : ""}
+
+          ${host
+            ? `<button class="primary" id="startBtn" ${canStart ? "" : "disabled"}>Start game</button>`
+            : `<p class="waiting-note">Waiting for the host to start the game…</p>`
+          }
+        </div>
+
+        <button class="ghost" id="leaveBtn">Leave room</button>
+      </div>
+    `;
+  }
+
+  function screenGame(){
+    const room = state.room;
+    const host = isHost();
+    const pmap = playersMap();
+    const me = pmap[state.myId];
+
+    let body = "";
+
+    const starterName = (pmap[room.starterId] && pmap[room.starterId].name) || null;
+    const starterBanner = starterName
+      ? `<div class="status-strip"><span class="dot"></span>${escapeHtml(starterName)} goes first this round</div>`
+      : "";
+
+    if (room.status === "reveal"){
+      const amImposter = room.imposterId === state.myId;
+      body = `
+        <div class="panel role-card ${amImposter ? "imposter" : "crew"}">
+          <div class="kicker">Round ${room.round}</div>
+          ${amImposter
+            ? `<div class="big">You're the Imposter</div>
+               <div class="hint">Everyone else has been shown a famous footballer. You haven't — but here's one clue about them to help you bluff:</div>
+               <div class="big" style="font-size:20px; margin-top:10px; color:var(--gold);">${escapeHtml(room.hintForImposter || "")}</div>`
+            : `<div class="big">${escapeHtml(room.footballer)}</div>
+               <div class="hint">That's the footballer. One person at the table doesn't know it — figure out who, without giving it away too easily.</div>`
+          }
+        </div>
+        ${starterBanner}
+        ${host
+          ? `<button class="primary" id="advanceBtn">Everyone's seen their role — start clues</button>`
+          : `<p class="waiting-note">Waiting for the host to move on once everyone's seen their role…</p>`
+        }
+      `;
+    } else if (room.status === "clues"){
+      const clues = currentRoundClues();
+      const mine = clues.find(c => c.id === state.myId);
+      body = `
+        ${starterBanner}
+        <div class="panel">
+          <h2>Give a one-word clue</h2>
+          <p class="lead">Something true about the footballer — vague enough that the imposter can't guess the name from it alone.</p>
+          <div class="field row">
+            <input type="text" id="clueInput" placeholder="e.g. Ballon d'Or" maxlength="60" value="${escapeHtml(mine ? mine.clue : "")}" />
+            <button class="primary small" id="clueBtn" style="flex:0 0 auto;">${mine ? "Update" : "Submit"}</button>
+          </div>
+          ${clues.length
+            ? clues.map(c => `
+                <div class="clue-row">
+                  <span class="who">${escapeHtml((pmap[c.id] && pmap[c.id].name) || c.name || "Player")}</span>
+                  <span class="what">${escapeHtml(c.clue)}</span>
+                </div>
+              `).join("")
+            : `<p class="empty-note">No clues yet.</p>`
+          }
+        </div>
+        ${host
+          ? `<button class="primary" id="advanceBtn">Move to discussion</button>`
+          : `<p class="waiting-note">Waiting for the host to move to discussion…</p>`
+        }
+      `;
+    } else if (room.status === "discuss"){
+      body = `
+        <div class="panel">
+          <h2>Discuss</h2>
+          <p class="lead">Talk it through out loud — who gave a shaky clue? Who seemed like they were guessing?</p>
+          ${currentRoundClues().length
+            ? currentRoundClues().map(c => `
+                <div class="clue-row">
+                  <span class="who">${escapeHtml((pmap[c.id] && pmap[c.id].name) || c.name || "Player")}</span>
+                  <span class="what">${escapeHtml(c.clue)}</span>
+                </div>
+              `).join("")
+            : ""
+          }
+        </div>
+        ${host
+          ? `<button class="primary" id="advanceBtn">Start voting</button>`
+          : `<p class="waiting-note">Waiting for the host to open voting…</p>`
+        }
+      `;
+    } else if (room.status === "voting"){
+      const votes = currentRoundVotes();
+      const counts = tally();
+      body = `
+        <div class="panel">
+          <h2>Vote out the imposter</h2>
+          <p class="lead">Pick who you think doesn't know the footballer.</p>
+          <div class="vote-grid">
+            ${state.players.map(p => `
+              <button class="vote-btn ${state.myVote === p.id ? "selected" : ""}" data-vote="${p.id}">
+                <span>${escapeHtml(p.name)}${p.id === state.myId ? " (you)" : ""}</span>
+                <span class="count">${counts[p.id] || 0}</span>
+              </button>
+            `).join("")}
+          </div>
+          <div class="status-strip"><span class="dot"></span>${Object.keys(votes).length} of ${state.players.length} voted</div>
+        </div>
+        ${host
+          ? `<button class="primary" id="advanceBtn">Reveal results</button>`
+          : `<p class="waiting-note">Waiting for the host to reveal results…</p>`
+        }
+      `;
+    } else if (room.status === "results"){
+      const counts = tally();
+      let topId = null, topCount = -1, tie = false;
+      Object.keys(counts).forEach(id => {
+        if (counts[id] > topCount){ topCount = counts[id]; topId = id; tie = false; }
+        else if (counts[id] === topCount){ tie = true; }
+      });
+      const caught = topId === room.imposterId && topCount > 0 && !tie;
+      const imposterName = (pmap[room.imposterId] && pmap[room.imposterId].name) || "The imposter";
+      body = `
+        <div class="result-banner ${caught ? "crew-win" : "imposter-win"}">
+          ${caught ? "The imposter was caught!" : (tie ? "It was a tie — the imposter slips away." : "The imposter got away with it.")}
+        </div>
+        <div class="panel">
+          <h2>${escapeHtml(imposterName)} was the imposter</h2>
+          <p class="lead">The footballer was <strong style="color:var(--line)">${escapeHtml(room.footballer)}</strong>.</p>
+          <div class="vote-grid">
+            ${state.players.map(p => `
+              <div class="vote-btn" style="cursor:default;">
+                <span>${escapeHtml(p.name)}${p.id === room.imposterId ? " — imposter" : ""}</span>
+                <span class="count">${counts[p.id] || 0} vote${(counts[p.id]||0) === 1 ? "" : "s"}</span>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+        ${host
+          ? `<div class="stack">
+               <button class="primary" id="newRoundBtn" ${state.players.length < 3 ? "disabled" : ""}>Play another round</button>
+               <button class="ghost" id="lobbyBtn">Back to lobby</button>
+             </div>`
+          : `<p class="waiting-note">Waiting for the host to start another round…</p>`
+        }
+      `;
+    } else {
+      body = `<div class="panel"><p class="lead">Loading…</p></div>`;
+    }
+
+    return `
+      <div class="wrap">
+        <div class="brand">
+          <span class="mark">⚽</span>
+          <h1>Football Imposter</h1>
+          <span class="sub">${escapeHtml(state.roomCode)}</span>
+        </div>
+        ${state.error ? `<div class="error-banner">${escapeHtml(state.error)}</div>` : ""}
+        ${body}
+        <button class="ghost" id="leaveBtn" style="margin-top:6px;">Leave room</button>
+      </div>
+    `;
+  }
+
+  // ---------------------------------------------------------------------
+  // Main render
+  // ---------------------------------------------------------------------
+  function render(){
+    const app = document.getElementById("app");
+    if (!state.ready){
+      app.innerHTML = `<div class="wrap"><div class="brand"><span class="mark">⚽</span><h1>Football Imposter</h1></div><p class="lead" style="text-align:center;">Loading…</p></div>`;
+      return;
+    }
+
+    let html;
+    if (!state.roomCode || !state.room){
+      html = screenLanding();
+    } else if (state.room.status === "lobby"){
+      html = screenLobby();
+    } else {
+      html = screenGame();
+    }
+    app.innerHTML = html;
+    attachHandlers();
+  }
+
+  function attachHandlers(){
+    const nameInput = document.getElementById("nameInput");
+    if (nameInput){
+      nameInput.addEventListener("input", e => { state.nameDraft = e.target.value; });
+    }
+    const joinCodeInput = document.getElementById("joinCodeInput");
+    if (joinCodeInput){
+      joinCodeInput.addEventListener("input", e => { state.joinCodeDraft = e.target.value.toUpperCase(); });
+    }
+    const createBtn = document.getElementById("createBtn");
+    if (createBtn){
+      createBtn.addEventListener("click", () => {
+        const name = (state.nameDraft || "").trim();
+        if (!name){ state.error = "Enter your name first."; render(); return; }
+        createRoom(name);
+      });
+    }
+    const joinBtn = document.getElementById("joinBtn");
+    if (joinBtn){
+      joinBtn.addEventListener("click", () => {
+        const name = (state.nameDraft || "").trim();
+        if (!name){ state.error = "Enter your name first."; render(); return; }
+        joinRoom(state.joinCodeDraft, name);
+      });
+    }
+    const leaveBtn = document.getElementById("leaveBtn");
+    if (leaveBtn){
+      leaveBtn.addEventListener("click", () => leaveRoom(true));
+    }
+    const startBtn = document.getElementById("startBtn");
+    if (startBtn){
+      startBtn.addEventListener("click", startGame);
+    }
+    const advanceBtn = document.getElementById("advanceBtn");
+    if (advanceBtn && state.room){
+      const next = { reveal: "clues", clues: "discuss", discuss: "voting", voting: "results" }[state.room.status];
+      if (next) advanceBtn.addEventListener("click", () => setPhase(next));
+    }
+    const clueBtn = document.getElementById("clueBtn");
+    if (clueBtn){
+      clueBtn.addEventListener("click", () => {
+        const val = document.getElementById("clueInput").value;
+        submitClue(val);
+      });
+    }
+    document.querySelectorAll("[data-vote]").forEach(btn => {
+      btn.addEventListener("click", () => castVote(btn.getAttribute("data-vote")));
+    });
+    const newRoundBtn = document.getElementById("newRoundBtn");
+    if (newRoundBtn){ newRoundBtn.addEventListener("click", newRound); }
+    const lobbyBtn = document.getElementById("lobbyBtn");
+    if (lobbyBtn){ lobbyBtn.addEventListener("click", endToLobby); }
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
